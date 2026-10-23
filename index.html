@@ -120,10 +120,48 @@ const seedCards=[
 {id:'6',word:'ephemeral',meaning:'adj. lasting for a very short time; 短暫的',folder:'英文核心'}];
 let state=JSON.parse(localStorage.getItem('wordloop')||'null')||{cards:seedCards,folders:['英文核心','生物'],selected:'all'};
 let practice={cards:[],zones:{A:[],B:[],C:[]},deck:[],round:0,phase:'initial',side:'word'};let editingId=null;
+  let folderParentForNew='';
 const saveState=()=>localStorage.setItem('wordloop',JSON.stringify(state));
 function selectFolder(f){state.selected=f;saveState();render();showLibrary()}
 function render(){renderFolders();renderLibrary();updateFolderSelect()}
-function renderFolders(){const list=document.getElementById('folderList');list.innerHTML=state.folders.map(f=>`<div class="folder-wrap"><button class="folder ${state.selected===f?'active':''}" onclick="selectFolder('${esc(f)}')"><span>📁 ${esc(f)}</span><span class="count">${state.cards.filter(c=>c.folder===f).length}</span></button><button class="folder-delete" title="刪除資料夾" onclick="deleteFolder('${esc(f)}',event)">×</button></div>`).join('');document.querySelector('[data-folder="all"]').classList.toggle('active',state.selected==='all');document.getElementById('allCount').textContent=state.cards.length}
+
+function renderFolders(){
+  const list=document.getElementById('folderList');
+
+  const ordered=[...state.folders].sort((a,b)=>{
+    return a.localeCompare(b,'zh-Hant');
+  });
+
+  list.innerHTML=ordered.map(f=>{
+    const parts=f.split('/');
+    const depth=parts.length-1;
+    const name=parts[parts.length-1];
+    const count=state.cards.filter(c=>
+      c.folder===f||c.folder.startsWith(f+'/')
+    ).length;
+
+    return `
+      <div class="folder-wrap" style="margin-left:${depth*14}px">
+        <button class="folder ${state.selected===f?'active':''}"
+          onclick="selectFolder('${esc(f)}')">
+          <span>${depth?'　↳':'📁'} ${esc(name)}</span>
+          <span class="count">${count}</span>
+        </button>
+        <button class="folder-delete"
+          title="新增子資料夾"
+          onclick="addSubfolder('${esc(f)}',event)">＋</button>
+        <button class="folder-delete"
+          title="刪除資料夾"
+          onclick="deleteFolder('${esc(f)}',event)">×</button>
+      </div>`;
+  }).join('');
+
+  document.querySelector('[data-folder="all"]')
+    .classList.toggle('active',state.selected==='all');
+
+  document.getElementById('allCount').textContent=state.cards.length;
+}
+
 function renderLibrary(){
   const cards=state.selected==='all'
     ?state.cards
@@ -164,45 +202,63 @@ function renderLibrary(){
   if(!grid.children.length){
     grid.innerHTML='<div class="empty"><strong>還沒有單字卡或子資料夾</strong>可以新增單字卡或子資料夾。</div>';
   }
-
-  const home=document.getElementById('homeFolderGrid');
-  home.innerHTML=state.folders.filter(f=>!f.includes('/')).map(f=>
-    `<button class="home-folder" onclick="selectFolder('${esc(f)}')">
-      <span>📁</span><strong>${esc(f)}</strong>
-      <small>${state.cards.filter(c=>c.folder===f||c.folder.startsWith(f+'/')).length} 張單字 · 點選查看</small>
-    </button>`
-  ).join('')||'<div class="empty">建立第一個資料夾開始整理。</div>';
 }
 function updateFolderSelect(){document.getElementById('folderInput').innerHTML=state.folders.map(f=>`<option>${esc(f)}</option>`).join('');if(state.selected!=='all')document.getElementById('folderInput').value=state.selected}
+
 function addFolder(){
+  folderParentForNew='';
   document.getElementById('newFolderInput').value='';
-  const parent=state.selected!=='all'?state.selected:'';
-  document.getElementById('newFolderInput').placeholder=
-    parent?'輸入子資料夾名稱':'例如：英文核心/期中考';
+  document.getElementById('newFolderInput').placeholder='輸入新資料夾名稱';
   document.getElementById('folderModal').classList.add('show');
   setTimeout(()=>document.getElementById('newFolderInput').focus(),0);
 }
-function closeFolderModal(){document.getElementById('folderModal').classList.remove('show')}
+
+function addSubfolder(parent,e){
+  if(e)e.stopPropagation();
+  folderParentForNew=parent;
+  document.getElementById('newFolderInput').value='';
+  document.getElementById('newFolderInput').placeholder=
+    '新增在「'+parent.split('/').pop()+'」裡';
+  document.getElementById('folderModal').classList.add('show');
+  setTimeout(()=>document.getElementById('newFolderInput').focus(),0);
+}
+
+function closeFolderModal(){
+  document.getElementById('folderModal').classList.remove('show');
+  folderParentForNew='';
+}
+
+
 function saveFolder(){
-  let n=document.getElementById('newFolderInput').value.trim().replace(/^\/+|\/+$/g,'');
-  if(!n)return;
+  let name=document.getElementById('newFolderInput')
+    .value.trim().replace(/^\/+|\/+$/g,'');
 
-  const parent=state.selected!=='all'?state.selected:'';
-  if(parent&&!n.includes('/'))n=parent+'/'+n;
+  if(!name)return;
 
-  const parts=n.split('/').filter(Boolean);
+  // 從指定的父資料夾建立子資料夾
+  if(folderParentForNew && !name.includes('/')){
+    name=folderParentForNew+'/'+name;
+  }
+
+  // 一般新增資料夾不會因為目前選取某個資料夾，
+  // 就自動被建立成子資料夾
+  const parts=name.split('/').filter(Boolean);
   let path='';
 
   for(const part of parts){
-    path=path?path+'/'+part:part;
-    if(!state.folders.includes(path))state.folders.push(path);
+    path=path ? path+'/'+part : part;
+
+    if(!state.folders.includes(path)){
+      state.folders.push(path);
+    }
   }
 
-  state.selected=n;
+  state.selected=name;
   saveState();
   closeFolderModal();
   render();
 }
+
 function deleteFolder(name,e){e.stopPropagation();if(state.folders.length<=1)return alert('至少要保留一個資料夾。');state.cards=state.cards.filter(c=>c.folder!==name);state.folders=state.folders.filter(f=>f!==name);if(state.selected===name)state.selected='all';saveState();render()}
 function openAddCard(){editingId=null;document.getElementById('modalTitle').textContent='建立單字卡';document.getElementById('wordInput').value='';document.getElementById('meaningInput').value='';updateFolderSelect();document.getElementById('modal').classList.add('show')}
 function openEdit(id){const c=state.cards.find(x=>x.id===id);if(!c)return;editingId=id;document.getElementById('modalTitle').textContent='編輯單字卡';document.getElementById('wordInput').value=c.word;document.getElementById('meaningInput').value=c.meaning;updateFolderSelect();document.getElementById('folderInput').value=c.folder;document.getElementById('modal').classList.add('show')}
