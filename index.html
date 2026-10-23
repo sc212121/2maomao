@@ -73,7 +73,10 @@ body {
 <div class="layout">
 <aside><div class="side-title">資料夾</div><button class="folder active" data-folder="all" onclick="selectFolder('all')"><span>▦ 全部單字</span><span class="count" id="allCount">0</span></button><div id="folderList"></div><button class="add-folder" onclick="addFolder()">＋ 新增資料夾</button></aside>
 <main>
-<section id="libraryView" class="view active"><div class="topline"><div><div class="eyebrow">VOCABULARY LIBRARY</div><div class="title" id="libraryTitle">全部單字</div><div class="subtitle">建立自己的單字卡，依資料夾整理。</div></div><button class="btn primary" onclick="openAddCard()">＋ 建立單字卡</button></div><div id="cardGrid" class="cards-grid"></div></section>
+<section id="libraryView" class="view active"><div class="topline"><div><div class="eyebrow">VOCABULARY LIBRARY</div><div class="title" id="libraryTitle">全部單字</div><div class="subtitle">建立自己的單字卡，依資料夾整理。</div></div><div style="display:flex;gap:8px;flex-wrap:wrap">
+  <button class="btn ghost" onclick="addFolder()">＋ 新增子資料夾</button>
+  <button class="btn primary" onclick="openAddCard()">＋ 建立單字卡</button>
+</div></div><div id="cardGrid" class="cards-grid"></div></section>
 <section id="practiceView" class="view"><div class="practice-head"><div><div class="eyebrow">ABC REVIEW</div><div class="title">循環練習</div><div class="subtitle" id="practiceSubtitle">把目前牌堆的最上方卡片拖到正確區域。</div></div><select id="practiceMode" class="mode" onchange="setPracticeSide(this.value)"><option value="word">看單字 → 背意思</option><option value="meaning">看意思 → 背單字</option></select></div><div class="progress"><i id="progressBar"></i></div><div class="phase" id="phaseText">第一輪：答對 → A，答錯 → C</div><div class="hint">點擊最上方卡片查看答案；確認後把它拖到指定區域。錯誤卡會留在 C，下一輪再複習。</div><div class="deck"><div class="zone-head"><div><span class="zone-name">目前牌堆</span> <span class="zone-desc">只會顯示最上面一張</span></div><span id="deckCount">0 張</span></div><div class="zone-cards" id="deckCards"></div></div><div class="practice-grid"><div class="zone" data-zone="A"><div class="zone-head"><div><span class="zone-name">A</span> <span class="zone-desc">已熟悉</span></div><span id="countA">0 張</span></div><div class="zone-cards" id="zoneA"></div></div><div class="zone" data-zone="B"><div class="zone-head"><div><span class="zone-name">B</span> <span class="zone-desc">再複習</span></div><span id="countB">0 張</span></div><div class="zone-cards" id="zoneB"></div></div><div class="zone" data-zone="C"><div class="zone-head"><div><span class="zone-name">C</span> <span class="zone-desc">答錯／待加強</span></div><span id="countC">0 張</span></div><div class="zone-cards" id="zoneC"></div></div></div><div id="complete" class="complete">
   <div class="complete-panel">
     <div class="completion-cat">🐈</div>
@@ -121,7 +124,55 @@ const saveState=()=>localStorage.setItem('wordloop',JSON.stringify(state));
 function selectFolder(f){state.selected=f;saveState();render();showLibrary()}
 function render(){renderFolders();renderLibrary();updateFolderSelect()}
 function renderFolders(){const list=document.getElementById('folderList');list.innerHTML=state.folders.map(f=>`<div class="folder-wrap"><button class="folder ${state.selected===f?'active':''}" onclick="selectFolder('${esc(f)}')"><span>📁 ${esc(f)}</span><span class="count">${state.cards.filter(c=>c.folder===f).length}</span></button><button class="folder-delete" title="刪除資料夾" onclick="deleteFolder('${esc(f)}',event)">×</button></div>`).join('');document.querySelector('[data-folder="all"]').classList.toggle('active',state.selected==='all');document.getElementById('allCount').textContent=state.cards.length}
-function renderLibrary(){const cards=state.selected==='all'?state.cards:state.cards.filter(c=>c.folder===state.selected);document.getElementById('libraryTitle').textContent=state.selected==='all'?'全部單字':state.selected;const grid=document.getElementById('cardGrid');grid.innerHTML=cards.length?cards.map(c=>`<article class="word-card"><div class="card-actions"><button class="icon-btn" title="編輯" onclick="openEdit('${c.id}')">✎</button><button class="icon-btn" title="刪除" onclick="deleteCard('${c.id}')">×</button></div><div class="word">${esc(c.word)}</div><div class="meaning">${esc(c.meaning)}</div><span class="tag">📁 ${esc(c.folder)}</span></article>`).join(''):`<div class="empty"><strong>還沒有單字卡</strong>建立第一張單字卡，就可以開始練習。</div>`}
+function renderLibrary(){
+  const cards=state.selected==='all'
+    ?state.cards
+    :state.cards.filter(c=>c.folder===state.selected||c.folder.startsWith(state.selected+'/'));
+
+  document.getElementById('libraryTitle').textContent=
+    state.selected==='all'?'全部單字':state.selected.split('/').pop();
+
+  const grid=document.getElementById('cardGrid');
+  grid.innerHTML='';
+
+  const subfolders=state.selected==='all'
+    ?state.folders.filter(f=>!f.includes('/'))
+    :state.folders.filter(f=>f.startsWith(state.selected+'/')&&!f.slice(state.selected.length+1).includes('/'));
+
+  subfolders.forEach(f=>{
+    const tile=document.createElement('button');
+    tile.className='word-card';
+    tile.style.textAlign='left';
+    tile.innerHTML=`<div class="word">📁 ${esc(f.split('/').pop())}</div>
+      <div class="meaning">子資料夾 · ${state.cards.filter(c=>c.folder===f||c.folder.startsWith(f+'/')).length} 張單字卡</div>`;
+    tile.onclick=()=>selectFolder(f);
+    grid.appendChild(tile);
+  });
+
+  if(cards.length){
+    grid.insertAdjacentHTML('beforeend',cards.map(c=>`<article class="word-card">
+      <div class="card-actions">
+        <button class="icon-btn" title="編輯" onclick="openEdit('${c.id}')">✎</button>
+        <button class="icon-btn" title="刪除" onclick="deleteCard('${c.id}')">×</button>
+      </div>
+      <div class="word">${esc(c.word)}</div>
+      <div class="meaning">${esc(c.meaning)}</div>
+      <span class="tag">📁 ${esc(c.folder)}</span>
+    </article>`).join(''));
+  }
+
+  if(!grid.children.length){
+    grid.innerHTML='<div class="empty"><strong>還沒有單字卡或子資料夾</strong>可以新增單字卡或子資料夾。</div>';
+  }
+
+  const home=document.getElementById('homeFolderGrid');
+  home.innerHTML=state.folders.filter(f=>!f.includes('/')).map(f=>
+    `<button class="home-folder" onclick="selectFolder('${esc(f)}')">
+      <span>📁</span><strong>${esc(f)}</strong>
+      <small>${state.cards.filter(c=>c.folder===f||c.folder.startsWith(f+'/')).length} 張單字 · 點選查看</small>
+    </button>`
+  ).join('')||'<div class="empty">建立第一個資料夾開始整理。</div>';
+}
 function updateFolderSelect(){document.getElementById('folderInput').innerHTML=state.folders.map(f=>`<option>${esc(f)}</option>`).join('');if(state.selected!=='all')document.getElementById('folderInput').value=state.selected}
 function addFolder(){document.getElementById('newFolderInput').value='';document.getElementById('folderModal').classList.add('show');setTimeout(()=>document.getElementById('newFolderInput').focus(),0)}
 function closeFolderModal(){document.getElementById('folderModal').classList.remove('show')}
